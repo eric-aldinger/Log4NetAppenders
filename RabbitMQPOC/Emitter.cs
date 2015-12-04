@@ -11,12 +11,11 @@ namespace RabbitTestHarness
 
         public static readonly ILog log = log4net.LogManager.GetLogger(typeof(Emitter));
 
-        public static string UserName = ConfigurationManager.AppSettings["rmq.UserName"];
-        public static string Password = ConfigurationManager.AppSettings["rmq.Password"];
+        public static string UserName = (ConfigurationManager.AppSettings["rmq.UserName"]);
+        public static string Password = (ConfigurationManager.AppSettings["rmq.Password"]);
         public static int MsgCnt = Int32.Parse(ConfigurationManager.AppSettings["sw.MessageCount"]);
         public static int Port = Int32.Parse(ConfigurationManager.AppSettings["rmq.Port"]);
         public static ushort Heartbeat = ushort.Parse(ConfigurationManager.AppSettings["rmq.Heartbeat"]);
-        public static string SvcUser = ConfigurationManager.AppSettings["rmq.SvcUser"];
         public static string VHost = ConfigurationManager.AppSettings["rmq.VmHost"];
         public static string HostName = ConfigurationManager.AppSettings["rmq.HostName"];
         public static bool Durability = false;
@@ -46,11 +45,40 @@ namespace RabbitTestHarness
                 UserName = UserName,
                 HostName = HostName,
                 RequestedHeartbeat = Heartbeat,
-                VirtualHost = VHost
+                VirtualHost = VHost,
+                Port = Port
             };
+
+            factory.AuthMechanisms = new AuthMechanismFactory[] { new PlainMechanismFactory()};
+            log.Info("Emitter connection factory created as UserName: " + factory.UserName + " HostName: " + factory.HostName + " VirtualHost: " + factory.VirtualHost + " Port:" + factory.Port + " Protocol:" + factory.Protocol);
             
-            Connection = factory.CreateConnection();
-            Model = Connection.CreateModel();
+            try
+            {
+                Connection = factory.CreateConnection();
+                Model = Connection.CreateModel();
+                log.Debug("Model created");
+            }
+                        catch (RabbitMQ.Client.Exceptions.BrokerUnreachableException _unreachable)
+            {
+                log.Error("Connection failed with {0}", _unreachable);
+
+                if (Connection != null)
+                {
+                    Connection.Close();
+                }
+                Environment.Exit(100);
+            }
+            catch (Exception e)
+            {
+                log.Error("{0} exception caught during connection.", e);
+                if (Connection != null)
+                {
+                    Connection.Close();
+                }
+                Environment.Exit(100);
+            }
+
+
 
             Model.ExchangeDeclare(
                 exchange: Exchange, 
@@ -59,7 +87,6 @@ namespace RabbitTestHarness
                 autoDelete: AutoDelete,
                 arguments:null
                 );
-
 
             Model.QueueDeclare(
                 queue: EndpointQueue,
@@ -97,7 +124,7 @@ namespace RabbitTestHarness
         public void Pause()
         {
             log.Debug("Pausing");
-            Receiver.ReceiveMsg();
+            Consumer.ReceiveMsg();
         }
 
         public void Continue()
@@ -111,6 +138,7 @@ namespace RabbitTestHarness
             log.Debug("Stopping service");
             Model.QueueDelete(EndpointQueue);
             Model.ExchangeDelete(Exchange);
+            Model.Close();
             log.Debug("Service stopped");
         }
     }

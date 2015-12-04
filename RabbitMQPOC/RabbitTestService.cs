@@ -18,25 +18,27 @@ namespace RabbitTestHarness
         {
             //Enable logging at the earliest part of the entry point
             XmlConfigurator.Configure(new FileInfo(logfile));
-            log.Debug("Logging enabled");
+            log.Debug("main method entered. Logging enabled");
             ServiceConfiguration();
             log.Debug("end main method entered");
         }
 
         public static void Pause()
         {
-            Receiver.ReceiveMsg();
+            Consumer.ReceiveMsg();
         }
 
         public static void ServiceConfiguration()
         {
             Topshelf.Host host = HostFactory.New(svcHost =>
             {
+                log.Debug("Enter the host factory");
                 svcHost.EnablePauseAndContinue();
                 svcHost.EnableShutdown();
-                svcHost.Service<Receiver>(svc =>
+                svcHost.Service<Emitter>(svc =>
                 {
-                    svc.ConstructUsing(() => new Receiver());
+                    log.Debug("Enter the Windows service constructor");
+                    svc.ConstructUsing(() => new Emitter());
                     
                     svc.WhenStarted(tsvc =>
                     {
@@ -61,7 +63,7 @@ namespace RabbitTestHarness
 
                     svc.WhenShutdown(tsvc =>
                     {
-                        Receiver.ReceiveMsg();
+                        Consumer.ReceiveMsg();
                         Thread.Sleep(100);
                         tsvc.Stop();
                     });
@@ -71,18 +73,7 @@ namespace RabbitTestHarness
                     svcHost.SetDescription("A test harness designed to provide N messages to a queue and consume them.");
                     svcHost.SetDisplayName("Data Services Rabbit Test Harness");
                     svcHost.SetServiceName("DataServicesRabbitTestHarness");
-                    switch (SecurityContext)
-                    {
-                        case "SvcAccount":
-                            svcHost.RunAs(ConfigurationManager.AppSettings["rmq.SvcUser"], ConfigurationManager.AppSettings["rmq.SvcPassword"]);
-                            break;
-                        case "local":
-                            svcHost.RunAsLocalSystem();
-                            break;
-                        default:
-                            svcHost.RunAsLocalService();
-                            break;
-                    }
+                    svcHost.RunAs(ConfigurationManager.AppSettings["rmq.SvcUser"], ConfigurationManager.AppSettings["rmq.SvcPassword"]);
                 });
             });
             host.Run();

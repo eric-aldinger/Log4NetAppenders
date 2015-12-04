@@ -6,15 +6,15 @@ using RabbitMQ.Client.Events;
 
 namespace RabbitTestHarness
 {
-    public class Receiver : Emitter
+    public class Consumer : Emitter
     {
-        private static readonly ILog log = LogManager.GetLogger(typeof(Receiver));
+        private static readonly ILog log = LogManager.GetLogger(typeof(Consumer));
         public static void ReceiveMsg()
         {
             var hostName = HostName;
             var factory = new ConnectionFactory() {HostName = hostName};
 
-            log.Info("Receiver started");
+            log.Info("Consumer started");
             
             using (var connection = factory.CreateConnection())
             using (var channel = connection.CreateModel())
@@ -38,7 +38,7 @@ namespace RabbitTestHarness
             
             }
 
-            log.Info("Receiver complete");
+            log.Info("Consumer complete");
         }
     }
 }
