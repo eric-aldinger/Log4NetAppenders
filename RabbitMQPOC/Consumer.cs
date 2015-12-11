@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Configuration;
 using System.Text;
 using log4net;
 using RabbitMQ.Client;
@@ -9,36 +10,30 @@ namespace RabbitTestHarness
     public class Consumer : Emitter
     {
         private static readonly ILog log = LogManager.GetLogger(typeof(Consumer));
+        private static string EndpointQueue = ConfigurationManager.AppSettings["rmq.LDAPEndpointQueue"];
+
+        public static string _message;
         public static void ReceiveMsg()
         {
-            var hostName = HostName;
-            var factory = new ConnectionFactory() {HostName = hostName};
 
-            log.Info("Consumer started");
+            log.Debug("Consumer started");
             
-            using (var connection = factory.CreateConnection())
-            using (var channel = connection.CreateModel())
-            {
-
-                var consumer = new EventingBasicConsumer(channel);
+            ConnectionHelper.Connector();
+            var consumer = new EventingBasicConsumer(ConnectionHelper.Model);
 
                 consumer.Received += (model, ea) =>
                 {
                     var body = ea.Body;
-                    var message = Encoding.UTF8.GetString(body);
-                    Console.WriteLine(" [x] Received {0}", message);
+                    _message = Encoding.UTF8.GetString(body);
                    };
 
-                channel.BasicConsume(
+                ConnectionHelper.Model.BasicConsume(
                     queue: EndpointQueue,
                     noAck: true,
                     consumer: consumer);
-                Console.WriteLine(" Press [enter] to exit.");
-                Console.ReadLine();
-            
-            }
 
-            log.Info("Consumer complete");
+                log.Debug("Received AD message : " + Environment.NewLine + _message);            
+                log.Debug("Consumer complete");
         }
     }
 }

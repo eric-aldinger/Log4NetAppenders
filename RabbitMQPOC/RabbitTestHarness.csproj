@@ -55,7 +55,9 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="GuestEmitter.cs" />
     <Compile Include="Emitter.cs" />
+    <Compile Include="ConnectionHelper.cs" />
     <Compile Include="RabbitTestService.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Consumer.cs" />

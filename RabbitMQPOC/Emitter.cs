@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Configuration;
+using System.Net;
 using System.Text;
 using log4net;
 using RabbitMQ.Client;
@@ -9,136 +10,207 @@ namespace RabbitTestHarness
     public class Emitter
     {
 
-        public static readonly ILog log = log4net.LogManager.GetLogger(typeof(Emitter));
+        public static readonly ILog log = LogManager.GetLogger(typeof(Emitter));
 
-        public static string UserName = (ConfigurationManager.AppSettings["rmq.UserName"]);
-        public static string Password = (ConfigurationManager.AppSettings["rmq.Password"]);
-        public static int MsgCnt = Int32.Parse(ConfigurationManager.AppSettings["sw.MessageCount"]);
-        public static int Port = Int32.Parse(ConfigurationManager.AppSettings["rmq.Port"]);
-        public static ushort Heartbeat = ushort.Parse(ConfigurationManager.AppSettings["rmq.Heartbeat"]);
-        public static string VHost = ConfigurationManager.AppSettings["rmq.VmHost"];
-        public static string HostName = ConfigurationManager.AppSettings["rmq.HostName"];
-        public static bool Durability = false;
-        public static string RtKey = "DS_Test_RoutingKey";
-        public static string EndpointQueue = "DS_Test_Delete_Me";
-        public static string Exchange = "DS_Test_Delete_Me_Ex";
-        public static string ExType = "fanout";
-        public static bool AutoDelete = true;
-        public static IConnection Connection;
-        public static IModel Model;
+        private static string UserName = (ConfigurationManager.AppSettings["rmq.UserName"]);
+        private static string Password = (ConfigurationManager.AppSettings["rmq.Password"]);
+        private static int MsgCnt = Int32.Parse(ConfigurationManager.AppSettings["sw.MessageCount"]);
+        private static int Port = Int32.Parse(ConfigurationManager.AppSettings["rmq.Port"]);
+        private static ushort Heartbeat = ushort.Parse(ConfigurationManager.AppSettings["rmq.Heartbeat"]);
+        private static string VHost = ConfigurationManager.AppSettings["rmq.VmHost"];
+        private static string HostName = ConfigurationManager.AppSettings["rmq.HostName"];
+        private static bool Durability = false;
+        private static string RtKey = "LDAP_Test_RoutingKey";
+        private static string EndpointQueue = ConfigurationManager.AppSettings["rmq.LDAPEndpointQueue"];
+        private static string Exchange = ConfigurationManager.AppSettings["rmq.LDAPEndpointQueue"];
+        private static string ExType = "fanout";
+        private static bool AutoDelete = true;
+        private static IConnection Connection;
+        private static IModel Model;
 
-        public static string Msg = 
-          @"{_id:ObjectId('563a7a87e2548b102838aee3'),
-            'FileName':'TimeslipSample_2015-11-04T21.37.11.8271792.csv',
-            'DateReceived':
-            ISODate('2015-11-04T21:37:11.827Z'),
-            'RowCount':436,
-            'ProcessStatus':'File-level validation complete.'}";
+        public static string Msg = "_+_+_+_+_This is a message using a LDAP authenticated user._+__+_+_";
 
         public void Start()
         {
-            log.Info("Emitter started: {}");
-
-            var factory = new ConnectionFactory()
-            {
-                Password = Password,
-                UserName = UserName,
-                HostName = HostName,
-                RequestedHeartbeat = Heartbeat,
-                VirtualHost = VHost,
-                Port = Port
-            };
-
-            factory.AuthMechanisms = new AuthMechanismFactory[] { new PlainMechanismFactory()};
-            log.Info("Emitter connection factory created as UserName: " + factory.UserName + " HostName: " + factory.HostName + " VirtualHost: " + factory.VirtualHost + " Port:" + factory.Port + " Protocol:" + factory.Protocol);
-            
             try
             {
-                Connection = factory.CreateConnection();
-                Model = Connection.CreateModel();
-                log.Debug("Model created");
+                Emitter.Connect();
             }
-                        catch (RabbitMQ.Client.Exceptions.BrokerUnreachableException _unreachable)
+            catch
             {
-                log.Error("Connection failed with {0}", _unreachable);
-
-                if (Connection != null)
-                {
-                    Connection.Close();
-                }
-                Environment.Exit(100);
+                log.Error("Could not log in as " + UserName + "/" + Password);
             }
-            catch (Exception e)
+
+            try
             {
-                log.Error("{0} exception caught during connection.", e);
-                if (Connection != null)
+                if (Emitter.Connection.IsOpen)
                 {
-                    Connection.Close();
+                    EmitMsg();
                 }
-                Environment.Exit(100);
+            }
+            catch
+            {
+                log.Error("Could not queue messages as " + Emitter.UserName + "/" + Emitter.Password);
             }
 
+            try
+            {
+                GuestEmitter.Connect();
+            }
+            catch
+            {
+                log.Error("Could not log in as " + GuestEmitter.UserName + "/" + GuestEmitter.Password);
+            }
 
+            try
+            {
+                if (GuestEmitter.Connection.IsOpen)
+                {
+                    GuestEmitter.EmitGuestMsg();
+                }
+            }
+            catch
+            {
+                log.Error("Could not queue messages as " + GuestEmitter.UserName + "/" + GuestEmitter.Password);
+            }
+        }
 
-            Model.ExchangeDeclare(
-                exchange: Exchange, 
-                type: ExType,
-                durable: Durability,
-                autoDelete: AutoDelete,
-                arguments:null
-                );
+        public static void Connect()
+        {
+            log.Debug("LDAP Emitter starting");
 
-            Model.QueueDeclare(
-                queue: EndpointQueue,
-                durable: Durability,
-                exclusive: false,
-                autoDelete: false,
-                arguments: null);
+            try
+            {
+                var factory = new ConnectionFactory()
+                {
+                    Password = Password,
+                    UserName = UserName,
+                    HostName = HostName,
+                    RequestedHeartbeat = Heartbeat,
+                    VirtualHost = VHost,
+                    Port = Port
+                };
 
-            Model.QueueBind(
-                queue: EndpointQueue,
-                exchange: Exchange,
-                routingKey: RtKey);
+                factory.AuthMechanisms = new AuthMechanismFactory[] { new PlainMechanismFactory() };
+                log.Debug("LDAP Emitter connection factory created as UserName: " + factory.UserName + " HostName: " +
+                          factory.HostName + " VirtualHost: " + factory.VirtualHost + " Port:" + factory.Port +
+                          " Protocol:" + factory.Protocol);
 
-            log.Info("queue " + EndpointQueue + " bound to exhcnage " + Exchange);
+                try
+                {
+                    Connection = factory.CreateConnection();
+                    Model = Connection.CreateModel();
+                    log.Debug("LDAP Auth model created");
+                }
+                catch (RabbitMQ.Client.Exceptions.BrokerUnreachableException _unreachable)
+                {
+                    log.Error("LDAP connection failed with {0}", _unreachable);
+
+                    if (Connection != null)
+                    {
+                        Connection.Close();
+                    }
+                }
+                catch (Exception e)
+                {
+                    log.Error("{0} exception caught during LDAP connection.", e);
+                    if (Connection != null)
+                    {
+                        Connection.Close();
+                    }
+                }
+
+                Model.ExchangeDeclare(
+                    exchange: Exchange,
+                    type: ExType,
+                    durable: Durability,
+                    autoDelete: AutoDelete,
+                    arguments: null
+                    );
+
+                Model.QueueDeclare(
+                    queue: EndpointQueue,
+                    durable: Durability,
+                    exclusive: false,
+                    autoDelete: false,
+                    arguments: null);
+
+                Model.QueueBind(
+                    queue: EndpointQueue,
+                    exchange: Exchange,
+                    routingKey: RtKey);
+
+                log.Debug("queue " + Emitter.EndpointQueue + " bound to LDAP  exchange " + Emitter.Exchange);
+            }
+            catch
+            {
+                log.Error("Could not log in as " + Emitter.UserName + "/" + Emitter.Password);
+            }
         }
 
         public void EmitMsg()
         {
-            var msBody = Encoding.UTF8.GetBytes(Msg);
-
-            int i = 0;
-            while (i++ < MsgCnt)
+            try
             {
-                Model.BasicPublish(
-                exchange: Exchange,
-                routingKey: RtKey,
-                basicProperties: null,
-                body: msBody);
+                var msBody = Encoding.UTF8.GetBytes(Msg);
 
-                log.Debug(" _-_- Sent "+Msg+" messages");
+                int i = 0;
+                while (i++ < MsgCnt)
+                {
+                    Model.BasicPublish(
+                        exchange: Exchange,
+                        routingKey: RtKey,
+                        basicProperties: null,
+                        body: msBody);
+
+                    log.Debug(" _-_- Sent " + Msg + " LDAP messages");
+
+
+                }
+                log.Debug("LDAP Emitter done: ");
             }
-            log.Info("Emitter done: ");
+            catch
+            { 
+                log.Error("Could not emit LDAP messages");
+            }
         }
 
         public void Pause()
         {
             log.Debug("Pausing");
             Consumer.ReceiveMsg();
+            GuestEmitter.EatMessages();
         }
 
         public void Continue()
         {
             log.Debug("Continue with more msgs");
             EmitMsg();
+            GuestEmitter.EmitGuestMsg();
         }
 
         public void Stop()
         {
             log.Debug("Stopping service");
-            Model.QueueDelete(EndpointQueue);
-            Model.ExchangeDelete(Exchange);
-            Model.Close();
+            try
+            {
+                Model.QueueDelete(EndpointQueue);
+                Model.ExchangeDelete(Exchange);
+                Model.Close();
+            }
+            catch
+            {
+                log.Info("Could not delete the AD queues");
+            }
+            try
+            {
+                GuestEmitter.EatQueues();
+            }
+            catch
+            {
+                log.Info("Could not delete the guest queues");
+            }
+
             log.Debug("Service stopped");
         }
     }
